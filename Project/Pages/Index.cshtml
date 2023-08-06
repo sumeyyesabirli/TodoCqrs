@@ -73,6 +73,7 @@
             ]
         }),
         onTimeRangeSelected: async (args) => {
+         
             const modal = await DayPilot.Modal.prompt("Create a new event:", "Event");
             dp.clearSelection();
             if (modal.canceled) {
@@ -95,6 +96,7 @@
             const {data} = await DayPilot.Http.put(`/api/events/${args.e.id()}/move`, params);
         },
         onEventResize: async (args) => {
+            debugger;
             const params = {
                 id: args.e.id(),
                 start: args.newStart,

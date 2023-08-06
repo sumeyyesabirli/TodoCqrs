@@ -1,9 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Project.CQRS.Commands;
+using Project.CQRS.Handlers;
+using Project.CQRS.Queries;
+using Project.CQRS.Results;
 using Project.Dal;
 using Project.Models;
 
@@ -14,24 +14,37 @@ namespace Project.Controllers
     public class EventsController : Controller
     {
         private readonly CalendarContext _context;
+        private readonly GetEventQueryHandler _getEventQueryHandler;
+        private readonly CreateEventCommandHandler _createEventCommandHandler;
+        private readonly RemoveEventCommandHandler _removeEventCommandHandler;
 
-        public EventsController(CalendarContext context)
+        public EventsController(CalendarContext context,
+               GetEventQueryHandler getEventQueryHandler,
+               CreateEventCommandHandler createEventCommandHandler,
+               RemoveEventCommandHandler removeEventCommandHandler)
         {
             _context = context;
+            _getEventQueryHandler = getEventQueryHandler;
+            _createEventCommandHandler = createEventCommandHandler;
+            _removeEventCommandHandler = removeEventCommandHandler;
         }
+
 
         // GET: api/Events
         [HttpGet]
-        public IEnumerable<Event> GetEvents([FromQuery] DateTime start, [FromQuery] DateTime end)
+        public async Task<IActionResult> GetEvents([FromQuery] DateTime start, [FromQuery] DateTime end)
         {
-            // Gelen tarihleri UTC saat dilimine dönüştürün
-            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
-            end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
+           
+                start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
+                end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
 
-            return from e in _context.Events where !((e.End <= start) || (e.Start >= end)) select e;
+                var query = new GetEventQueryResult { Start = start, End = end };
+                var events = await _getEventQueryHandler.Handle(query);
+
+                return Ok(events);
         }
 
-        // GET: api/Events/5
+
         [HttpGet("{id}")]
         public async Task<IActionResult> GetEvent([FromRoute] int id)
         {
@@ -40,8 +53,6 @@ namespace Project.Controllers
                 return BadRequest(ModelState);
 
             }
-
-
             var @event = await _context.Events.SingleOrDefaultAsync(m => m.Id == id);
             @event.Start = DateTime.SpecifyKind(@event.Start, DateTimeKind.Utc);
             @event.End = DateTime.SpecifyKind(@event.End, DateTimeKind.Utc);
@@ -54,7 +65,6 @@ namespace Project.Controllers
             return Ok(@event);
         }
 
-        // PUT: api/Events/5
         [HttpPut("{id}")]
         public async Task<IActionResult> PutEvent([FromRoute] int id, [FromBody] Event @event)
         {
@@ -89,7 +99,7 @@ namespace Project.Controllers
             return NoContent();
         }
 
-        // PUT: api/Events/5/move
+    
         [HttpPut("{id}/move")]
         public async Task<IActionResult> MoveEvent([FromRoute] int id, [FromBody] EventMoveParams param)
         {
@@ -126,7 +136,7 @@ namespace Project.Controllers
             return NoContent();
         }
 
-        // PUT: api/Events/5/color
+      
         [HttpPut("{id}/color")]
         public async Task<IActionResult> SetEventColor([FromRoute] int id, [FromBody] EventColorParams param)
         {
@@ -162,27 +172,17 @@ namespace Project.Controllers
             return NoContent();
         }
 
-        // POST: api/Events
         [HttpPost]
-        public async Task<IActionResult> PostEvent([FromBody] Event @event)
+        public async Task<IActionResult> PostEvent([FromBody] CreateEventCommand command)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
-
-            @event.Start = DateTime.SpecifyKind(@event.Start, DateTimeKind.Utc);
-            @event.End = DateTime.SpecifyKind(@event.End, DateTimeKind.Utc);
-
-            _context.Events.Add(@event);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction("GetEvent", new { id = @event.Id }, @event);
+                await _createEventCommandHandler.Handle(command);
+                return CreatedAtAction("GetEvent", new { id = command.Id }, command);
         }
 
-
-
-        // DELETE: api/Events/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteEvent([FromRoute] int id)
         {
@@ -191,16 +191,20 @@ namespace Project.Controllers
                 return BadRequest(ModelState);
             }
 
-            var @event = await _context.Events.SingleOrDefaultAsync(m => m.Id == id);
-            if (@event == null)
+            try
             {
-                return NotFound();
+                var command = new RemoveEventCommand { Id = id };
+                await _removeEventCommandHandler.Handle(command);
+                return Ok();
             }
-
-            _context.Events.Remove(@event);
-            await _context.SaveChangesAsync();
-
-            return Ok(@event);
+            catch (ArgumentException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"An error occurred while processing the request: {ex.Message}");
+            }
         }
 
         private bool EventExists(int id)

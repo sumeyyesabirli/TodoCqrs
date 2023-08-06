@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Project.CQRS.Handlers;
+using Project.CQRS.Queries;
 using Project.Dal;
 using Project.Models;
 
@@ -17,7 +19,9 @@ builder.Services.AddDbContext<CalendarContext>(x =>
 });
 
 builder.Services.TryAddScoped<DbContext, CalendarContext>();
-
+builder.Services.AddScoped<GetEventQueryHandler>();
+builder.Services.AddScoped<CreateEventCommandHandler>();
+builder.Services.AddScoped<RemoveEventCommandHandler>();
 var app = builder.Build();
 
 
